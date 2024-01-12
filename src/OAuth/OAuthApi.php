@@ -129,6 +129,8 @@ final class OAuthApi
             'client_secret' => $this->config->getClientSecret(),
         ];
     }
+
+    /** @throws PenneoSdkRuntimeException */
     public function postApiKeyExchange(): PenneoTokens
     {
         return $this->postOrThrow(
