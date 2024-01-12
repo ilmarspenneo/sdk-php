@@ -6,10 +6,10 @@ use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Response;
 use Penneo\SDK\OAuth\Config\OAuthConfig;
+use Penneo\SDK\OAuth\Nonce\NonceGenerator;
 use Penneo\SDK\OAuth\OAuthApi;
 use Penneo\SDK\OAuth\Tokens\PenneoTokens;
 use Penneo\SDK\OAuth\Tokens\SessionTokenStorage;
-use Penneo\SDK\OAuth\UniqueIdGenerator;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 
@@ -20,8 +20,8 @@ class OAuthApiTest extends TestCase
     private $config;
     private $client;
     private $api;
-    /** @var UniqueIdGenerator&Stub */
-    private $idGenerator;
+    /** @var NonceGenerator&Stub */
+    private $nonceGenerator;
 
     public function setUp(): void
     {
@@ -38,9 +38,9 @@ class OAuthApiTest extends TestCase
 
         $storage = $this->createMock(SessionTokenStorage::class);
         $this->client = $this->createMock(Client::class);
-        $this->idGenerator = $this->createStub(UniqueIdGenerator::class);
+        $this->nonceGenerator = $this->createStub(NonceGenerator::class);
 
-        $this->api = new OAuthApi($this->config, $storage, $this->client, $this->idGenerator);
+        $this->api = new OAuthApi($this->config, $storage, $this->client, $this->nonceGenerator);
 
         $storage->method('getTokens')
             ->willReturn(new PenneoTokens(
@@ -76,18 +76,17 @@ class OAuthApiTest extends TestCase
     }
 
     /**
-     * @testWith ["unique id", "secret"]
-     *           ["another unique id", "real secret"]
+     * @testWith ["unique nonce", "secret"]
+     *           ["another unique nonce", "real secret"]
      */
-    public function testApiKeysExchangeGeneratesProperParameters(string $mockUniqueId, string $apiSecret)
+    public function testApiKeysExchangeGeneratesProperParameters(string $mockNonce, string $apiSecret)
     {
         $this->config->method('getEnvironment')->willReturn('sandbox');
-        $this->idGenerator->method('generate')->willReturn($mockUniqueId);
+        $this->nonceGenerator->method('generate')->willReturn($mockNonce);
         $this->config->method('getApiSecret')->willReturn($apiSecret);
 
         $createdAt = Carbon::getTestNow()->toString();
-        $nonce = substr(hash('sha512', $mockUniqueId), 0, 64);;
-        $digest = base64_encode(sha1($nonce . $createdAt . $apiSecret, true));
+        $digest = base64_encode(sha1($mockNonce . $createdAt . $apiSecret, true));
 
         $this->client->expects($this->once())
             ->method('post')
@@ -98,7 +97,7 @@ class OAuthApiTest extends TestCase
                     'client_secret' => 'secret',
                     'key' => 'apiKey',
                     'created_at' => Carbon::getTestNow()->toString(),
-                    'nonce' => $nonce,
+                    'nonce' => base64_encode($mockNonce),
                     'digest' => $digest
                 ]
             ])
